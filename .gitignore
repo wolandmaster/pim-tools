@@ -1,0 +1,7 @@
+*~
+*.swp
+*.swo
+*.log
+*.json
+__pycache__
+temp
