@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022 Sandor Balazsi (sandor.balazsi@gmail.com)
+# Copyright (c) 2022-2023 Sandor Balazsi (sandor.balazsi@gmail.com)
 
 import json
 

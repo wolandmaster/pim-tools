@@ -17,7 +17,6 @@ options:
   -s <name>, --source <name>    Source calendar name in Exchange (default: Calendar)
   -g <file>, --google <file>    Google config file (default: google_oauth.json)
   -t <name>, --target <name>    Target calendar name in Google (default: primary)
-  -l <file>, --log <file>       Log file name (default: calendar_sync.log)
 ```
 
 ## Config files
@@ -39,6 +38,10 @@ google_oauth.json:
 ```json
 {
   "client_id": "...",
-  "client_secret": "..."
+  "client_secret": "...",
+  "scopes": [
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.events"
+  ]
 }
 ```

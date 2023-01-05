@@ -1,5 +1,5 @@
 #!/bin/bash -e
-# Copyright (c) 2022 Sandor Balazsi (sandor.balazsi@gmail.com)
+# Copyright (c) 2022-2023 Sandor Balazsi (sandor.balazsi@gmail.com)
 
 TOOL="$1"
 if [[ -z "${TOOL}" ]]; then

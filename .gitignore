@@ -3,5 +3,7 @@
 *.swo
 *.log
 *.json
+.venv
 __pycache__
-temp
+dev
+openwrt

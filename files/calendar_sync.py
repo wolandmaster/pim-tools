@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022 Sandor Balazsi (sandor.balazsi@gmail.com)
+# Copyright (c) 2022-2023 Sandor Balazsi (sandor.balazsi@gmail.com)
 
 """One-way synchronization of calendars (from Office 365 to Google)"""
 
-import os, sys, logging, datetime, time, sched
+import os, sys, logging, datetime, time, sched, signal
 from config import Config
 from argparse import ArgumentParser, HelpFormatter
-from o365_oauth import Office365ExchangeAccount
+from o365_oauth import Office365Credentials, Office365ExchangeAccount
 from google_oauth import GoogleCredentials
 from googleapiclient.discovery import build
 from exchangelib.ewsdatetime import EWSDateTime, EWSTimeZone, UTC
@@ -17,6 +17,7 @@ from functools import wraps
 LOGGER = logging.getLogger(__name__)
 PAST_EVENTS = datetime.timedelta(days = 7)
 FUTURE_EVENTS = datetime.timedelta(days = 28)
+GOOGLE_RETRIES = 5
 SYNC_INTERVAL_SEC = 300
 
 def debug(msg, runtime = False):
@@ -43,16 +44,20 @@ class ExchangeCalendar:
     @debug('Logged in to Office 365')
     def login(self):
         config = Config(self.config_file).load()
-        self.account = Office365ExchangeAccount(config).login()
+        credentials = Office365Credentials(config).login()
+        self.account = Office365ExchangeAccount(credentials).build()
         self.calendar = self.calendar_by_name(self.calendar_name)
         self.tz = EWSTimeZone.localzone()
         return self
 
     def calendar_by_name(self, name):
-        for folder in self.account.root.walk().get_folders():
-            if isinstance(folder, Calendar) and folder.name == name:
-                return folder
-        raise Exception(f'No such Exchange calendar: {name}')
+        if name == 'Calendar':
+            return self.account.calendar
+        else:
+            for folder in self.account.root.walk().get_folders():
+                if isinstance(folder, Calendar) and folder.name == name:
+                    return folder
+            raise Exception(f'No such Exchange calendar: {name}')
 
     @debug(lambda e: 'Fetched %d events from Office 365 calendar' % len(e), True)
     def events(self, start, end):
@@ -80,9 +85,7 @@ class GoogleCalendar:
     @debug('Logged in to Google')
     def login(self):
         config = Config(self.config_file).load()
-        credentials = GoogleCredentials(config, [
-            'https://www.googleapis.com/auth/calendar'
-        ]).login()
+        credentials = GoogleCredentials(config).login()
         self.account = build('calendar', 'v3', credentials = credentials)
         self.calendar = self.calendar_by_name(self.calendar_name)
         self.tz = datetime.datetime.now().astimezone().tzinfo
@@ -93,7 +96,7 @@ class GoogleCalendar:
         while True:
             calendar_list = self.account.calendarList().list(
                 pageToken = page_token
-            ).execute()
+            ).execute(num_retries = GOOGLE_RETRIES)
             for calendar in calendar_list['items']:
                 if calendar.get('summary') == name \
                 or calendar.get('summaryOverride') == name \
@@ -113,7 +116,7 @@ class GoogleCalendar:
                 timeMin = start.astimezone(self.tz).isoformat(),
                 timeMax = end.astimezone(self.tz).isoformat(),
                 timeZone = self.tz
-            ).execute()
+            ).execute(num_retries = GOOGLE_RETRIES)
             events.extend(event_list['items'])
             page_token = event_list.get('nextPageToken')
             if not page_token:
@@ -138,18 +141,18 @@ class GoogleCalendar:
         event = self.account.events().insert(
             calendarId = self.calendar.get('id'),
             body = event
-        ).execute()
+        ).execute(num_retries = GOOGLE_RETRIES)
         LOGGER.debug('Event created: %s, %s (%s)',
-            subject, start.isoformat(), event["htmlLink"]
+            subject, start.isoformat(), event['htmlLink']
         )
 
     def delete(self, event):
         self.account.events().delete(
             calendarId = self.calendar.get('id'),
             eventId = event.get('id')
-        ).execute()
+        ).execute(num_retries = GOOGLE_RETRIES)
         LOGGER.debug(f'Event deleted: %s, %s',
-            event["summary"], event["start"]["dateTime"]
+            event['summary'], event['start']['dateTime']
         )
 
 class CalendarSync:
@@ -196,7 +199,9 @@ class CalendarSync:
                 del target_events[fingerprint]
             else:
                 self.target_calendar.create(
-                    source_event.start, source_event.end, source_event.subject,
+                    source_event.start.astimezone(self.source_calendar.tz),
+                    source_event.end.astimezone(self.source_calendar.tz),
+                    source_event.subject,
                     description = source_event.text_body or None
                 )
         for fingerprint, target_event in target_events.items():
@@ -207,9 +212,13 @@ class CalendarSync:
             calendar.fingerprint(event): event for event in calendar.events(start, end)
         }
 
+def exit_gracefully(*args):
+    LOGGER.debug('Exiting...')
+    sys.exit(0)
+
 if __name__ == '__main__':
     parser = ArgumentParser(
-        formatter_class = lambda prog: HelpFormatter(prog, max_help_position = 35)
+        formatter_class = lambda prog: HelpFormatter(prog, max_help_position = 32)
     )
     parser.add_argument(
         '-e', '--exchange', metavar = '<file>', default = 'o365_oauth.json',
@@ -227,10 +236,6 @@ if __name__ == '__main__':
         '-t', '--target', metavar = '<name>', default = 'primary',
         help = 'Target calendar name in Google (default: primary)'
     )
-    parser.add_argument(
-        '-l', '--log', metavar = '<file>', default = 'calendar_sync.log',
-        help = 'Log file name (default: calendar_sync.log)'
-    )
     args = parser.parse_args()
 
     if not os.path.isfile(args.exchange):
@@ -242,14 +247,18 @@ if __name__ == '__main__':
         sys.exit(1)
 
     logging.basicConfig(
-        handlers = [logging.StreamHandler(), logging.FileHandler(args.log)],
-        format = '%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
+        format = '%(asctime)s.%(msecs)03d %(levelname)-5s %(message)s',
         datefmt = '%Y-%m-%d %H:%M:%S',
         level = logging.WARNING
     )
+    logging.addLevelName(logging.WARNING, 'WARN')
+    logging.addLevelName(logging.CRITICAL, 'FATAL')
     for logger in [__name__, 'google_oauth', 'o365_oauth']:
         logging.getLogger(logger).setLevel(logging.DEBUG)
 
+    LOGGER.debug('Starting...')
+    signal.signal(signal.SIGTERM, exit_gracefully)
+    signal.signal(signal.SIGINT, exit_gracefully)
     exchange = ExchangeCalendar(args.exchange, args.source).login()
     google = GoogleCalendar(args.google, args.target).login()
     CalendarSync(exchange, google).run()

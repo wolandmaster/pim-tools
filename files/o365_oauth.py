@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022 Sandor Balazsi (sandor.balazsi@gmail.com)
+# Copyright (c) 2022-2023 Sandor Balazsi (sandor.balazsi@gmail.com)
 
 """Office 365 Interactive OAuth 2.0"""
 
-import logging, time, requests, json
+import os, sys, logging, time, requests, json
 from config import Config
+from argparse import ArgumentParser, HelpFormatter
 from oauthlib.oauth2 import WebApplicationClient
 from exchangelib import Account, Configuration, DELEGATE
-from exchangelib.protocol import BaseProtocol
+from exchangelib.protocol import BaseProtocol, Protocol
 from exchangelib.credentials import BaseOAuth2Credentials
-from subprocess import Popen, DEVNULL
-from marionette_driver.marionette import Marionette
-from urllib.parse import quote_plus, urlparse, parse_qs
 from cached_property import threaded_cached_property
 
 LOGGER = logging.getLogger(__name__)
@@ -20,7 +18,7 @@ REDIRECT_URI = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
 USER_AGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0'
 BaseProtocol.USERAGENT = USER_AGENT
 
-class Office365OAuth2Credentials(BaseOAuth2Credentials):
+class Office365Credentials(BaseOAuth2Credentials):
     def __init__(self, config):
         super().__init__(
             tenant_id = config.get('tenant_id'),
@@ -28,8 +26,18 @@ class Office365OAuth2Credentials(BaseOAuth2Credentials):
             client_secret = None
         )
         self.config = config
-        self.email_address = config.get('email_address')
         self.refresh_token = config.get('refresh_token')
+
+    def login(self):
+        if self.config.has('refresh_token'):
+            self.refresh()
+        else:
+            self.code = self.authorize()
+            Protocol(config = Configuration(
+                server = EXCHANGE_SERVER,
+                credentials = self
+            )).create_session()
+        return self
 
     def refresh(self, session = None):
         super().refresh(session)
@@ -55,10 +63,52 @@ class Office365OAuth2Credentials(BaseOAuth2Credentials):
 
     def on_token_auto_refreshed(self, access_token):
         super().on_token_auto_refreshed(access_token)
-        self.code = None
         self.refresh_token = self.access_token['refresh_token']
         self.config.set('refresh_token', self.refresh_token).save()
         LOGGER.debug('Office 365 oauth token refreshed')
+
+    def authorize(self):
+        from subprocess import Popen, DEVNULL
+        from marionette_driver.marionette import Marionette
+        from urllib.parse import urlparse, parse_qs
+
+        firefox_process = Popen([
+            'firefox', '--kiosk', '--marionette',
+            '--width', '500', '--height', '700', '--private-window', 'about:blank'
+        ], stdout = DEVNULL, stderr = DEVNULL)
+
+        firefox = Marionette()
+        firefox.start_session()
+        firefox.navigate(self.authorization_url())
+        while True:
+            url = firefox.get_url()
+            if url.startswith(REDIRECT_URI):
+                code = parse_qs(urlparse(url).query)['code'][0]
+                break
+            time.sleep(1)
+        firefox.delete_session()
+        firefox_process.terminate()
+        return code
+
+    def authorization_url(self):
+        from urllib.parse import quote_plus
+
+        return 'https://login.microsoftonline.com/' \
+                '{tenant_id}/oauth2/authorize' \
+                '?client_id={client_id}' \
+                '&login_hint={login_hint}' \
+                '&response_type={response_type}' \
+                '&response_mode={response_mode}' \
+                '&redirect_uri={redirect_uri}' \
+                '&resource={resource}'.format(
+            tenant_id = self.config.get('tenant_id'),
+            client_id = self.config.get('client_id'),
+            login_hint = quote_plus(self.config.get('email_address')),
+            response_type = 'code',
+            response_mode = 'query',
+            redirect_uri = quote_plus(REDIRECT_URI),
+            resource = quote_plus(f'https://{EXCHANGE_SERVER}')
+        )
 
     @property
     def token_url(self):
@@ -80,6 +130,7 @@ class Office365OAuth2Credentials(BaseOAuth2Credentials):
         params = super().token_params()
         if self.code:
             params['code'] = self.code
+            self.code = None
         return params
 
     @threaded_cached_property
@@ -87,69 +138,47 @@ class Office365OAuth2Credentials(BaseOAuth2Credentials):
         return WebApplicationClient(client_id = self.client_id)
 
 class Office365ExchangeAccount:
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, credentials):
+        self.credentials = credentials
 
-    def login(self):
-        credentials = Office365OAuth2Credentials(self.config)
-        if self.config.has('refresh_token'):
-            credentials.refresh()
-        else:
-            credentials.code = self.authorize()
+    def build(self):
         configuration = Configuration(
             server = EXCHANGE_SERVER,
-            credentials = credentials
+            credentials = self.credentials
         )
         return Account(
-            primary_smtp_address = self.config.get('email_address'),
+            primary_smtp_address = self.credentials.config.get('email_address'),
             config = configuration,
             autodiscover = False,
             access_type = DELEGATE
         )
 
-    def authorization_url(self):
-        return 'https://login.microsoftonline.com/' \
-                '{tenant_id}/oauth2/authorize' \
-                '?client_id={client_id}' \
-                '&login_hint={login_hint}' \
-                '&response_type={response_type}' \
-                '&response_mode={response_mode}' \
-                '&redirect_uri={redirect_uri}' \
-                '&resource={resource}'.format(
-            tenant_id = self.config.get('tenant_id'),
-            client_id = self.config.get('client_id'),
-            login_hint = quote_plus(self.config.get('email_address')),
-            response_type = 'code',
-            response_mode = 'query',
-            redirect_uri = quote_plus(REDIRECT_URI),
-            resource = quote_plus(f'https://{EXCHANGE_SERVER}')
-        )
-
-    def authorize(self):
-        firefox_process = Popen([
-            'firefox', '--kiosk', '--marionette',
-            '--width', '500', '--height', '700', '--private-window', 'about:blank'
-        ], stdout = DEVNULL, stderr = DEVNULL)
-
-        firefox = Marionette()
-        firefox.start_session()
-        firefox.navigate(self.authorization_url())
-        while True:
-            url = firefox.get_url()
-            if url.startswith(REDIRECT_URI):
-                code = parse_qs(urlparse(url).query)['code'][0]
-                break
-            time.sleep(1)
-        firefox.delete_session()
-        firefox_process.terminate()
-        return code
-
 if __name__ == '__main__':
-    logging.basicConfig(
-        format = '%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
-        datefmt = '%Y-%m-%d %H:%M:%S',
-        level = logging.INFO
+    parser = ArgumentParser(
+        formatter_class = lambda prog: HelpFormatter(prog, max_help_position = 30)
     )
-    config = Config(filename = 'o365_oauth.json').load()
-    Office365ExchangeAccount(config).login()
-    LOGGER.info('Credentials file updated successfully')
+    parser.add_argument(
+        '-c', '--config', metavar = '<file>', default = 'o365_oauth.json',
+        help = 'Config file (default: o365_oauth.json)'
+    )
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.epilog = 'No such config file: %s' % args.config
+    if parser.epilog:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    logging.basicConfig(
+        format = '%(asctime)s.%(msecs)03d %(levelname)-5s %(message)s',
+        datefmt = '%Y-%m-%d %H:%M:%S',
+        level = logging.WARNING
+    )
+    logging.addLevelName(logging.WARNING, 'WARN')
+    logging.addLevelName(logging.CRITICAL, 'FATAL')
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
+
+    config = Config(filename = args.config).load()
+    credentials = Office365Credentials(config).login()
+    LOGGER.debug('Credentials file updated successfully')
+    print(credentials.access_token['access_token'])
