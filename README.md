@@ -41,7 +41,8 @@ google_oauth.json:
   "client_secret": "...",
   "scopes": [
     "https://www.googleapis.com/auth/calendar.readonly",
-    "https://www.googleapis.com/auth/calendar.events"
+    "https://www.googleapis.com/auth/calendar.events",
+    ...
   ]
 }
 ```

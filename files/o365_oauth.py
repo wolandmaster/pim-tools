@@ -7,7 +7,7 @@ import os, sys, logging, time, requests, json
 from config import Config
 from argparse import ArgumentParser, HelpFormatter
 from oauthlib.oauth2 import WebApplicationClient
-from exchangelib import Account, Configuration, DELEGATE
+from exchangelib import Account, Configuration, FaultTolerance, DELEGATE
 from exchangelib.protocol import BaseProtocol, Protocol
 from exchangelib.credentials import BaseOAuth2Credentials
 from cached_property import threaded_cached_property
@@ -16,6 +16,7 @@ LOGGER = logging.getLogger(__name__)
 EXCHANGE_SERVER = 'outlook.office365.com'
 REDIRECT_URI = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
 USER_AGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0'
+RETRY_POLICY_MAX_WAIT_SEC = 300
 BaseProtocol.USERAGENT = USER_AGENT
 
 class Office365Credentials(BaseOAuth2Credentials):
@@ -144,6 +145,7 @@ class Office365ExchangeAccount:
     def build(self):
         configuration = Configuration(
             server = EXCHANGE_SERVER,
+	    retry_policy = FaultTolerance(max_wait = RETRY_POLICY_MAX_WAIT_SEC),
             credentials = self.credentials
         )
         return Account(
