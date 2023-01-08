@@ -4,7 +4,34 @@ Various tools for managing calendar, contact and email entries for Exchange (Off
 
 ## Tools
 
+### google_oauth.py
+
+Make/refresh Google oauth2 and print the access token.
+```
+$ ./pim_tools.sh google_oauth.py -h
+...
+usage: google_oauth.py [-h] [-c <file>]
+
+options:
+  -h, --help                  show this help message and exit
+  -c <file>, --config <file>  Config file (default: google_oauth.json)
+```
+
+### o365_oauth.py
+
+Make/refresh Office 365 oauth2 and print the access token.
+```
+$ ./pim-tools.sh o365_oauth.py -h
+...
+usage: o365_oauth.py [-h] [-c <file>]
+
+options:
+  -h, --help                  show this help message and exit
+  -c <file>, --config <file>  Config file (default: o365_oauth.json)
+```
+
 ### calendar_sync.py
+
 One-way synchronization of calendars (from Office 365 to Google)
 ```
 $ ./pim_tools.sh calendar_sync.py -h
@@ -42,7 +69,7 @@ google_oauth.json:
   "scopes": [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/calendar.events",
-    ...
+    "..."
   ]
 }
 ```
