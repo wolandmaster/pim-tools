@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install --yes \
       python3 python3-pip \
     && pip3 install --upgrade pip \
     && pip3 install marionette_driver exchangelib \
-      google-api-python-client google-auth-httplib2 google-auth-oauthlib
+      google-api-python-client google-auth-httplib2 google-auth-oauthlib \
+      python-dateutil
 
 COPY files/firefox_force_deb.pref /etc/apt/preferences.d
 RUN add-apt-repository --yes ppa:mozillateam/ppa \

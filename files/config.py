@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022-2023 Sandor Balazsi (sandor.balazsi@gmail.com)
+# vim: ts=4:sw=4:sts=4:et
 
 import json
 
@@ -15,13 +16,13 @@ class Config:
 
     def save(self):
         with open(self.filename, 'w') as json_file:
-            json.dump(self.config, json_file, indent = 2)
+            json.dump(self.config, json_file, indent=2)
         return self
 
     def has(self, key):
         return key in self.config.keys()
 
-    def get(self, key, default = None):
+    def get(self, key, default=None):
         return self.config.get(key, default)
 
     def set(self, key, value):

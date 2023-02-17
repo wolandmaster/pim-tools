@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022-2023 Sandor Balazsi (sandor.balazsi@gmail.com)
+# vim: ts=4:sw=4:sts=4:et
 
 """One-way synchronization of calendars (from Office 365 to Google)"""
 
@@ -9,24 +10,25 @@ from argparse import ArgumentParser, HelpFormatter
 from o365_oauth import Office365Credentials, Office365ExchangeAccount
 from google_oauth import GoogleCredentials
 from googleapiclient.discovery import build
-from exchangelib.ewsdatetime import EWSDateTime, EWSTimeZone, UTC
+from exchangelib.ewsdatetime import EWSDateTime, EWSTimeZone
 from exchangelib.folders.known_folders import Calendar
+from dateutil.rrule import rrule, DAILY
 from threading import Thread
 from functools import wraps
 
 LOGGER = logging.getLogger(__name__)
 PAST_EVENTS = datetime.timedelta(days = 7)
 FUTURE_EVENTS = datetime.timedelta(days = 28)
-GOOGLE_RETRIES = 5
+GOOGLE_RETRIES = 10
 SYNC_INTERVAL_SEC = 300
 
-def debug(msg, runtime = False):
+def debug(msg, runtime=False):
     def decorator(func, *args, **kwargs):
         @wraps(func)
         def wrapper(*args, **kwargs):
             start = time.monotonic()
             result = func(*args, **kwargs)
-            delta = datetime.timedelta(seconds = time.monotonic() - start)
+            delta = datetime.timedelta(seconds=time.monotonic() - start)
             duration = ' (duration: {})'.format(delta) if runtime else ''
             if not callable(msg):
                 LOGGER.debug(msg + duration)
@@ -62,10 +64,15 @@ class ExchangeCalendar:
     @debug(lambda e: 'Fetched %d events from Office 365 calendar' % len(e), True)
     def events(self, start, end):
         try:
-            return list(self.calendar.view(
-                start = EWSDateTime.from_datetime(start).astimezone(self.tz),
-                end = EWSDateTime.from_datetime(end).astimezone(self.tz))
-            )
+            events = []
+            timerange = rrule(freq=DAILY, dtstart=start, until=end)
+            for range_start, range_end in zip(timerange, timerange[1:]):
+                events.extend([event for event in list(self.calendar.view(
+                    start = EWSDateTime.from_datetime(range_start).astimezone(self.tz),
+                    end = EWSDateTime.from_datetime(range_end).astimezone(self.tz))
+                ) if not event.is_all_day])
+            return events
+	    # TODO: https://github.com/ecederstrand/exchangelib/issues/109#issuecomment-311041273
         except Exception as e:
             LOGGER.error('Failed to fetch Office 365 events:', str(e))
 
@@ -86,7 +93,7 @@ class GoogleCalendar:
     def login(self):
         config = Config(self.config_file).load()
         credentials = GoogleCredentials(config).login()
-        self.account = build('calendar', 'v3', credentials = credentials)
+        self.account = build('calendar', 'v3', credentials=credentials)
         self.calendar = self.calendar_by_name(self.calendar_name)
         self.tz = datetime.datetime.now().astimezone().tzinfo
         return self
@@ -95,8 +102,8 @@ class GoogleCalendar:
         page_token = None
         while True:
             calendar_list = self.account.calendarList().list(
-                pageToken = page_token
-            ).execute(num_retries = GOOGLE_RETRIES)
+                pageToken=page_token
+            ).execute(num_retries=GOOGLE_RETRIES)
             for calendar in calendar_list['items']:
                 if calendar.get('summary') == name \
                 or calendar.get('summaryOverride') == name \
@@ -111,12 +118,12 @@ class GoogleCalendar:
         events, page_token = [], None
         while True:
             event_list = self.account.events().list(
-                pageToken = page_token,
-                calendarId = self.calendar.get('id'),
-                timeMin = start.astimezone(self.tz).isoformat(),
-                timeMax = end.astimezone(self.tz).isoformat(),
-                timeZone = self.tz
-            ).execute(num_retries = GOOGLE_RETRIES)
+                pageToken=page_token,
+                calendarId=self.calendar.get('id'),
+                timeMin=start.astimezone(self.tz).isoformat(),
+                timeMax=end.astimezone(self.tz).isoformat(),
+                timeZone=self.tz
+            ).execute(num_retries=GOOGLE_RETRIES)
             events.extend(event_list['items'])
             page_token = event_list.get('nextPageToken')
             if not page_token:
@@ -139,18 +146,18 @@ class GoogleCalendar:
         if kwargs.get('description'):
             event['description'] = kwargs.get('description')
         event = self.account.events().insert(
-            calendarId = self.calendar.get('id'),
-            body = event
-        ).execute(num_retries = GOOGLE_RETRIES)
+            calendarId=self.calendar.get('id'),
+            body=event
+        ).execute(num_retries=GOOGLE_RETRIES)
         LOGGER.debug('Event created: %s, %s (%s)',
             subject, start.isoformat(), event['htmlLink']
         )
 
     def delete(self, event):
         self.account.events().delete(
-            calendarId = self.calendar.get('id'),
-            eventId = event.get('id')
-        ).execute(num_retries = GOOGLE_RETRIES)
+            calendarId=self.calendar.get('id'),
+            eventId=event.get('id')
+        ).execute(num_retries=GOOGLE_RETRIES)
         LOGGER.debug(f'Event deleted: %s, %s',
             event['summary'], event['start']['dateTime']
         )
@@ -163,14 +170,14 @@ class CalendarSync:
     def asynchronous(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            thread = Thread(target = func, args = args, kwargs = kwargs)
+            thread = Thread(target=func, args=args, kwargs=kwargs)
             thread.start()
             return thread
         return wrapper
 
     def schedule(interval):
         def decorator(func, *args, **kwargs):
-            def periodic(scheduler, interval, action, args = (), kwargs = {}):
+            def periodic(scheduler, interval, action, args=(), kwargs={}):
                 scheduler.enter(interval, 1, periodic,
                     (scheduler, interval, action, args, kwargs))
                 action(*args, **kwargs)
@@ -218,38 +225,38 @@ def exit_gracefully(*args):
 
 if __name__ == '__main__':
     parser = ArgumentParser(
-        formatter_class = lambda prog: HelpFormatter(prog, max_help_position = 32)
+        formatter_class=lambda prog: HelpFormatter(prog, max_help_position=32)
     )
     parser.add_argument(
-        '-e', '--exchange', metavar = '<file>', default = 'o365_oauth.json',
-        help = 'Exchange (Office 365) config file (default: o365_oauth.json)'
+        '-e', '--exchange', metavar='<file>', default='o365_oauth.json',
+        help='Exchange (Office 365) config file (default: o365_oauth.json)'
     )
     parser.add_argument(
-        '-s', '--source', metavar = '<name>', default = 'Calendar',
-        help = 'Source calendar name in Exchange (default: Calendar)'
+        '-s', '--source', metavar='<name>', default='Calendar',
+        help='Source calendar name in Exchange (default: Calendar)'
     )
     parser.add_argument(
-        '-g', '--google', metavar = '<file>', default = 'google_oauth.json',
-        help = 'Google config file (default: google_oauth.json)'
+        '-g', '--google', metavar='<file>', default='google_oauth.json',
+        help='Google config file (default: google_oauth.json)'
     )
     parser.add_argument(
-        '-t', '--target', metavar = '<name>', default = 'primary',
-        help = 'Target calendar name in Google (default: primary)'
+        '-t', '--target', metavar='<name>', default='primary',
+        help='Target calendar name in Google (default: primary)'
     )
     args = parser.parse_args()
 
     if not os.path.isfile(args.exchange):
-        parser.epilog = 'No such Exchange config file: %s' % args.exchange
+        parser.epilog='No such Exchange config file: %s' % args.exchange
     if not os.path.isfile(args.google):
-        parser.epilog = 'No such Google config file: %s' % args.google
+        parser.epilog='No such Google config file: %s' % args.google
     if parser.epilog:
         parser.print_help(sys.stderr)
         sys.exit(1)
 
     logging.basicConfig(
-        format = '%(asctime)s.%(msecs)03d %(levelname)-5s %(message)s',
-        datefmt = '%Y-%m-%d %H:%M:%S',
-        level = logging.WARNING
+        format='%(asctime)s.%(msecs)03d %(levelname)-5s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        level=logging.WARNING
     )
     logging.addLevelName(logging.WARNING, 'WARN')
     logging.addLevelName(logging.CRITICAL, 'FATAL')

@@ -4,6 +4,22 @@ Various tools for managing calendar, contact and email entries for Exchange (Off
 
 ## Tools
 
+### calendar_sync.py
+
+One-way synchronization of calendars (from Office 365 to Google)
+```
+$ ./pim_tools.sh calendar_sync.py -h
+...
+usage: calendar_sync.py [-h] [-e <file>] [-s <name>] [-g <file>] [-t <name>] [-l <file>]
+
+options:
+  -h, --help                    show this help message and exit
+  -e <file>, --exchange <file>  Exchange (Office 365) config file (default: o365_oauth.json)
+  -s <name>, --source <name>    Source calendar name in Exchange (default: Calendar)
+  -g <file>, --google <file>    Google config file (default: google_oauth.json)
+  -t <name>, --target <name>    Target calendar name in Google (default: primary)
+```
+
 ### google_oauth.py
 
 Make/refresh Google oauth2 and print the access token.
@@ -28,22 +44,6 @@ usage: o365_oauth.py [-h] [-c <file>]
 options:
   -h, --help                  show this help message and exit
   -c <file>, --config <file>  Config file (default: o365_oauth.json)
-```
-
-### calendar_sync.py
-
-One-way synchronization of calendars (from Office 365 to Google)
-```
-$ ./pim_tools.sh calendar_sync.py -h
-...
-usage: calendar_sync.py [-h] [-e <file>] [-s <name>] [-g <file>] [-t <name>] [-l <file>]
-
-options:
-  -h, --help                    show this help message and exit
-  -e <file>, --exchange <file>  Exchange (Office 365) config file (default: o365_oauth.json)
-  -s <name>, --source <name>    Source calendar name in Exchange (default: Calendar)
-  -g <file>, --google <file>    Google config file (default: google_oauth.json)
-  -t <name>, --target <name>    Target calendar name in Google (default: primary)
 ```
 
 ## Config files
