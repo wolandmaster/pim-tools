@@ -12,7 +12,7 @@ from google_oauth import GoogleCredentials
 from googleapiclient.discovery import build
 from exchangelib.ewsdatetime import EWSDateTime, EWSTimeZone
 from exchangelib.folders.known_folders import Calendar
-from dateutil.rrule import rrule, DAILY
+from dateutil.rrule import rrule, WEEKLY
 from threading import Thread
 from functools import wraps
 
@@ -65,7 +65,7 @@ class ExchangeCalendar:
     def events(self, start, end):
         try:
             events = []
-            timerange = rrule(freq=DAILY, dtstart=start, until=end)
+            timerange = rrule(freq=WEEKLY, dtstart=start, until=end)
             for range_start, range_end in zip(timerange, timerange[1:]):
                 events.extend([event for event in list(self.calendar.view(
                     start = EWSDateTime.from_datetime(range_start).astimezone(self.tz),
