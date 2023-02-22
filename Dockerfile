@@ -13,10 +13,15 @@ RUN apt-get update && apt-get install --yes \
       google-api-python-client google-auth-httplib2 google-auth-oauthlib \
       python-dateutil
 
-COPY files/firefox_force_deb.pref /etc/apt/preferences.d
-RUN add-apt-repository --yes ppa:mozillateam/ppa \
-    && apt-get install --yes firefox
-COPY files/firefox_settings.js /usr/lib/firefox/defaults/pref
+RUN printf '%s\n' \
+      'Package: *' \
+      'Pin: release o=LP-PPA-mozillateam' \
+      'Pin-Priority: 1001' >/etc/apt/preferences.d/firefox_force_deb.pref \
+    && add-apt-repository --yes ppa:mozillateam/ppa \
+    && apt-get install --yes firefox \
+    && printf '%s\n' \
+      'pref("full-screen-api.ignore-widgets", true);' \
+      > /usr/lib/firefox/defaults/pref/firefox_settings.js
 
 RUN rm -rf /var/lib/apt/lists/*
 
