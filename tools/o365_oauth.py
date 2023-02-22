@@ -163,7 +163,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '-c', '--config', metavar='<file>', default='o365_oauth.json',
-        help='Config file (default: o365_oauth.json)'
+        help='config file (default: o365_oauth.json)'
     )
     args = parser.parse_args()
 

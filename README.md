@@ -6,7 +6,9 @@ Various tools for managing calendar, contact and email entries for Exchange (Off
 
 ### calendar_sync.py
 
-One-way synchronization of calendars (from Office 365 to Google)
+One-way synchronization of calendars (from Office 365 to Google).
+Required google auth scopes: "https://www.googleapis.com/auth/calendar.readonly"
+and "https://www.googleapis.com/auth/calendar.events".
 ```
 $ ./pim_tools.sh calendar_sync.py -h
 ...
@@ -14,10 +16,27 @@ usage: calendar_sync.py [-h] [-e <file>] [-s <name>] [-g <file>] [-t <name>] [-l
 
 options:
   -h, --help                    show this help message and exit
-  -e <file>, --exchange <file>  Exchange (Office 365) config file (default: o365_oauth.json)
-  -s <name>, --source <name>    Source calendar name in Exchange (default: Calendar)
-  -g <file>, --google <file>    Google config file (default: google_oauth.json)
-  -t <name>, --target <name>    Target calendar name in Google (default: primary)
+  -e <file>, --exchange <file>  exchange (office 365) config file (default: o365_oauth.json)
+  -s <name>, --source <name>    source calendar name in exchange (default: Calendar)
+  -g <file>, --google <file>    google config file (default: google_oauth.json)
+  -t <name>, --target <name>    target calendar name in google (default: primary)
+```
+
+### youtube_dl.py
+
+Download YouTube videos that have been added to a particular playlist.
+After a successful download, the related playlist item is deleted from the playlist.
+Required google auth scope: "https://www.googleapis.com/auth/youtube".
+```
+$ ./pim-tools.sh youtube_dl.py -h
+...
+usage: youtube_dl.py [-h] [-c <file>] [-p <name>] [-t <folder>]
+
+options:
+  -h, --help                      show this help message and exit
+  -c <file>, --config <file>      config file (default: google_oauth.json)
+  -p <name>, --playlist <name>    youtube playlist name to watch (default: Download)
+  -t <folder>, --target <folder>  target folder (default: ~/Download)
 ```
 
 ### google_oauth.py
@@ -30,7 +49,7 @@ usage: google_oauth.py [-h] [-c <file>]
 
 options:
   -h, --help                  show this help message and exit
-  -c <file>, --config <file>  Config file (default: google_oauth.json)
+  -c <file>, --config <file>  config file (default: google_oauth.json)
 ```
 
 ### o365_oauth.py
@@ -43,7 +62,7 @@ usage: o365_oauth.py [-h] [-c <file>]
 
 options:
   -h, --help                  show this help message and exit
-  -c <file>, --config <file>  Config file (default: o365_oauth.json)
+  -c <file>, --config <file>  config file (default: o365_oauth.json)
 ```
 
 ## Config files

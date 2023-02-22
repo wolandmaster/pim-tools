@@ -6,6 +6,7 @@
 
 import os, sys, logging, datetime, time, sched, signal
 from config import Config
+from common import debug
 from argparse import ArgumentParser, HelpFormatter
 from o365_oauth import Office365Credentials, Office365ExchangeAccount
 from google_oauth import GoogleCredentials
@@ -21,22 +22,6 @@ PAST_EVENTS = datetime.timedelta(days = 7)
 FUTURE_EVENTS = datetime.timedelta(days = 28)
 GOOGLE_RETRIES = 10
 SYNC_INTERVAL_SEC = 300
-
-def debug(msg, runtime=False):
-    def decorator(func, *args, **kwargs):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            start = time.monotonic()
-            result = func(*args, **kwargs)
-            delta = datetime.timedelta(seconds=time.monotonic() - start)
-            duration = ' (duration: {})'.format(delta) if runtime else ''
-            if not callable(msg):
-                LOGGER.debug(msg + duration)
-            elif result != None:
-                LOGGER.debug(msg(result) + duration)
-            return result
-        return wrapper
-    return decorator
 
 class ExchangeCalendar:
     def __init__(self, config_file, calendar_name):
@@ -229,19 +214,19 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '-e', '--exchange', metavar='<file>', default='o365_oauth.json',
-        help='Exchange (Office 365) config file (default: o365_oauth.json)'
+        help='exchange (office 365) config file (default: o365_oauth.json)'
     )
     parser.add_argument(
         '-s', '--source', metavar='<name>', default='Calendar',
-        help='Source calendar name in Exchange (default: Calendar)'
+        help='source calendar name in exchange (default: Calendar)'
     )
     parser.add_argument(
         '-g', '--google', metavar='<file>', default='google_oauth.json',
-        help='Google config file (default: google_oauth.json)'
+        help='google config file (default: google_oauth.json)'
     )
     parser.add_argument(
         '-t', '--target', metavar='<name>', default='primary',
-        help='Target calendar name in Google (default: primary)'
+        help='target calendar name in google (default: primary)'
     )
     args = parser.parse_args()
 
